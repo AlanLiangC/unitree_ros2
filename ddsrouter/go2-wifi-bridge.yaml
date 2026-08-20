@@ -1,0 +1,60 @@
+# Go2 internal DDS (eth10/domain 0) -> pocket Wi-Fi (wlan0/domain 42).
+#
+# This configuration targets eProsima DDS Router v2.2.0 (YAML v4.0).
+# Visualization and read-only state topics are exposed. No Unitree command
+# topic is routed.
+
+version: v4.0
+
+# The Foxy Realsense publisher uses an older CycloneDDS and does not always
+# provide enough dynamic type information for DDS Router. Pre-create its DDS
+# topics with the standard ROS 2 DDS type names.
+builtin-topics:
+  - name: rt/camera/color/image_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/color/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+  - name: rt/sportmodestate
+    type: unitree_go::msg::dds_::SportModeState_
+  - name: rt/lf/sportmodestate
+    type: unitree_go::msg::dds_::SportModeState_
+  - name: rt/lowstate
+    type: unitree_go::msg::dds_::LowState_
+  - name: rt/lf/lowstate
+    type: unitree_go::msg::dds_::LowState_
+  - name: rt/wirelesscontroller
+    type: unitree_go::msg::dds_::WirelessController_
+
+# Keep raw image histories bounded on the memory-constrained Go2 computer.
+specs:
+  qos:
+    history-depth: 10
+
+allowlist:
+  - name: rt/camera/color/image_raw
+  - name: rt/camera/color/camera_info
+  - name: rt/utlidar/cloud
+  - name: rt/tf
+  - name: rt/tf_static
+  - name: rt/sportmodestate
+  - name: rt/lf/sportmodestate
+  - name: rt/lowstate
+  - name: rt/lf/lowstate
+  - name: rt/wirelesscontroller
+
+participants:
+  - name: go2_internal
+    kind: local
+    domain: 0
+    transport: udp
+    whitelist-interfaces:
+      - "192.168.123.18"
+
+  - name: go2_wifi
+    kind: local
+    domain: 42
+    transport: udp
+    # Go2 has multiple active NICs. Pin Domain 42 to WLAN so Fast DDS
+    # advertises a locator that the laptop can actually reach.
+    whitelist-interfaces:
+      - "192.168.8.252"
