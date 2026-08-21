@@ -52,6 +52,7 @@ export UNITREE_DDS_DOMAIN
 
 _unitree_ros_setup="/opt/ros/${UNITREE_ROS_DISTRO}/setup.${_unitree_setup_suffix}"
 _unitree_ws_setup="${UNITREE_ROS2_ROOT}/cyclonedds_ws/install/setup.${_unitree_setup_suffix}"
+_unitree_root_overlay="${UNITREE_ROS2_ROOT}/install/local_setup.${_unitree_setup_suffix}"
 
 [[ -r "${_unitree_ros_setup}" ]] || {
   _unitree_fail "找不到 ${_unitree_ros_setup}"
@@ -140,8 +141,21 @@ else
 fi
 export UNITREE_DDS_PEER_IP
 
-# Source the base distribution first, then the Unitree message workspace.
+# Source the base distribution first.
 source "${_unitree_ros_setup}" || return 1
+
+# Packages built from the repository root (for example go2_description) are
+# installed under UNITREE_ROS2_ROOT/install, outside cyclonedds_ws. Load that
+# prefix as an optional overlay so a successful root-level colcon build is
+# immediately visible to ros2 launch. Use local_setup here because the base and
+# message-workspace underlays are selected explicitly; setup may replay stale
+# underlays captured when this overlay was built.
+if [[ -r "${_unitree_root_overlay}" ]]; then
+  source "${_unitree_root_overlay}" || return 1
+fi
+
+# Load the dedicated Unitree message workspace last so its current interface
+# packages take precedence over any old copies left in the root install tree.
 source "${_unitree_ws_setup}" || return 1
 
 export RMW_IMPLEMENTATION="rmw_cyclonedds_cpp"
@@ -198,7 +212,7 @@ echo "[unitree] Unitree   : ${UNITREE_GO2_IP} (${_unitree_go2_reachability})"
 echo "[unitree] DDS       : ${UNITREE_DDS_MODE}, domain ${ROS_DOMAIN_ID}, peer ${UNITREE_DDS_PEER_IP}"
 echo "[unitree] 测试命令  : ROS2CLI_NO_DAEMON=1 ros2 topic list --spin-time 10"
 
-unset _unitree_root _unitree_ros_setup _unitree_ws_setup
+unset _unitree_root _unitree_ros_setup _unitree_ws_setup _unitree_root_overlay
 unset _unitree_actual_ip _unitree_actual_mac _unitree_expected_mac
 unset _unitree_ubuntu_reachability _unitree_go2_reachability
 unset _unitree_detected_ubuntu_ip _unitree_detected_go2_ip

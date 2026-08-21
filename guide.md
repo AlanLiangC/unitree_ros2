@@ -126,7 +126,7 @@ source ~/DDS-Router/install/setup.bash
 本机新开 Bash 或 zsh 终端：
 
 ```bash
-cd /home/alan/AlanLiang/Projects/pure_projects/unitree_ros2
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation/unitree_ros2
 source ./init_env.sh
 ```
 
