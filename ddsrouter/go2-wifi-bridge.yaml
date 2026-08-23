@@ -14,6 +14,22 @@ builtin-topics:
     type: sensor_msgs::msg::dds_::Image_
   - name: rt/camera/color/camera_info
     type: sensor_msgs::msg::dds_::CameraInfo_
+  - name: rt/camera/color/metadata
+    type: realsense2_camera_msgs::msg::dds_::Metadata_
+  - name: rt/camera/depth/image_rect_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/depth/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+  - name: rt/camera/depth/metadata
+    type: realsense2_camera_msgs::msg::dds_::Metadata_
+  - name: rt/camera/aligned_depth_to_color/image_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/aligned_depth_to_color/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+  - name: rt/camera/extrinsics/depth_to_color
+    type: realsense2_camera_msgs::msg::dds_::Extrinsics_
+  - name: rt/camera/imu
+    type: sensor_msgs::msg::dds_::Imu_
   - name: rt/sportmodestate
     type: unitree_go::msg::dds_::SportModeState_
   - name: rt/lf/sportmodestate
@@ -33,6 +49,14 @@ specs:
 allowlist:
   - name: rt/camera/color/image_raw
   - name: rt/camera/color/camera_info
+  - name: rt/camera/color/metadata
+  - name: rt/camera/depth/image_rect_raw
+  - name: rt/camera/depth/camera_info
+  - name: rt/camera/depth/metadata
+  - name: rt/camera/aligned_depth_to_color/image_raw
+  - name: rt/camera/aligned_depth_to_color/camera_info
+  - name: rt/camera/extrinsics/depth_to_color
+  - name: rt/camera/imu
   - name: rt/utlidar/cloud
   - name: rt/tf
   - name: rt/tf_static

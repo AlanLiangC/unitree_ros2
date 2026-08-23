@@ -52,12 +52,20 @@ DDS Router 在 Go2 Ubuntu 上同时加入内部 Domain 0 与无线 Domain 42，�
 
 本仓库的 `ddsrouter/go2-wifi-bridge.yaml` 现在统一放行：
 
-- `/camera/color/image_raw`、`/camera/color/camera_info`；
+- RGB：`/camera/color/image_raw`、`/camera/color/camera_info`、metadata；
+- depth：原始 depth 和 `aligned_depth_to_color` 的图像、CameraInfo、metadata；
+- `/camera/extrinsics/depth_to_color`、`/camera/imu`；
 - `/utlidar/cloud`；
 - `/tf`、`/tf_static`；
 - `/sportmodestate`、`/lf/sportmodestate`；
 - `/lowstate`、`/lf/lowstate`；
 - `/wirelesscontroller`。
+
+这些 RGB-D 话题已经根据当前 Go2 上发现的名称加入 `builtin-topics` 与
+`allowlist`。第 8 节仍保留完整发现和核对流程，供更换相机或固件后排查。
+其中 metadata/extrinsics 分别按标准 RealSense
+`realsense2_camera_msgs/msg/Metadata` 和 `realsense2_camera_msgs/msg/Extrinsics`
+填写；启动 Router 前应在 Go2 Domain 0 用 `ros2 topic type` 确认实际类型一致。
 
 它没有放行：
 
@@ -68,7 +76,7 @@ DDS Router 在 Go2 Ubuntu 上同时加入内部 Domain 0 与无线 Domain 42，�
 为了不覆盖昨天或同事留下的配置，把它复制为一个新文件：
 
 ```bash
-cd /home/alan/AlanLiang/Projects/pure_projects/unitree_ros2
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation/unitree_ros2
 source ./init_env.sh
 
 scp ddsrouter/go2-wifi-bridge.yaml \
@@ -221,7 +229,222 @@ colcon build \
 
 显式使用 `/usr/bin/python3` 是为了避开本机 Conda Python 缺少 ROS `catkin_pkg` 的问题。
 
-## 8. 显示相机
+## 8. 发现并转发 RGB-D 深度话题
+
+### 8.1 为什么必须在 Go2 内部查找
+
+DDS Router 使用 allowlist。一个深度话题在 Router 配置中尚未放行时，本机
+Domain 42 看不到它，所以不能用本机 `ros2 topic list` 判断机器人是否发布
+深度。必须先登录 Go2 Ubuntu，在 `eth10 / Domain 0` 一侧检查。
+
+不要预先假定话题一定叫 `/camera/depth/image_rect_raw`。常见候选包括：
+
+```text
+/camera/depth/image_rect_raw
+/camera/aligned_depth_to_color/image_raw
+/camera/depth/camera_info
+/camera/aligned_depth_to_color/camera_info
+```
+
+FARM 需要 RGB 与深度逐像素对齐，因此如果相机同时发布原始 depth 和
+`aligned_depth_to_color`，优先选择后者。只有原始 depth 时，需要在消费端用
+彩色/深度内参和外参完成对齐。
+
+### 8.2 在 Go2 Ubuntu 的 Domain 0 找到真实话题
+
+先登录 Go2 Ubuntu，并使用一个**新的终端**。这个终端只用于 ROS 话题检查，
+不要 source `~/DDS-Router/install/setup.bash`：
+
+```bash
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation/unitree_ros2
+source ./init_env.sh
+ssh "unitree@${UNITREE_UBUNTU_IP}"
+
+ip -br -4 address show eth10
+ls -1 /opt/ros
+```
+
+根据 `ls /opt/ros` 的实际结果加载 Go2 自带的 ROS 版本。当前相机通常运行在
+Foxy 环境；如果机器上不是 Foxy，替换成实际目录名：
+
+```bash
+source /opt/ros/foxy/setup.bash
+export ROS_DOMAIN_ID=0
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+unset CYCLONEDDS_URI
+
+ROS2CLI_NO_DAEMON=1 ros2 topic list -t \
+  | grep -Ei 'camera|depth|aligned|infra|point'
+```
+
+如果当前 ROS/RMW 环境没有任何机器人话题，不要安装新包。先检查相机进程的
+实际启动环境，再复用它：
+
+```bash
+pgrep -af 'realsense|camera|depth'
+ros2 node list
+```
+
+也可以临时不设置 `RMW_IMPLEMENTATION`，重新 source 系统 ROS 后再列一次；
+核心要求是 `ROS_DOMAIN_ID=0` 且流量走 `eth10`。找到候选后，逐个确认类型、
+发布者和是否真的有数据。下面用 aligned depth 举例，变量必须替换成实际话题：
+
+```bash
+DEPTH_TOPIC=/camera/aligned_depth_to_color/image_raw
+DEPTH_INFO_TOPIC=/camera/aligned_depth_to_color/camera_info
+
+ROS2CLI_NO_DAEMON=1 ros2 topic type "$DEPTH_TOPIC"
+ROS2CLI_NO_DAEMON=1 ros2 topic info -v "$DEPTH_TOPIC"
+timeout 10 ros2 topic hz "$DEPTH_TOPIC"
+timeout 10 ros2 topic echo "$DEPTH_TOPIC" --once \
+  --qos-reliability best_effort | head -n 12
+
+ROS2CLI_NO_DAEMON=1 ros2 topic type "$DEPTH_INFO_TOPIC"
+timeout 10 ros2 topic echo "$DEPTH_INFO_TOPIC" --once \
+  --qos-reliability best_effort | head -n 30
+```
+
+预期消息类型分别为：
+
+```text
+sensor_msgs/msg/Image
+sensor_msgs/msg/CameraInfo
+```
+
+`Image` 开头应能看到 `height`、`width`、`encoding` 和 `step`。常见深度编码为
+`16UC1` 或 `32FC1`：不要只凭编码猜尺度。继续查相机节点参数中的
+`depth_units`，RealSense 的具体节点名以 `ros2 node list` 为准：
+
+```bash
+ros2 node list | grep -Ei 'camera|realsense'
+ros2 param list /实际相机节点名 | grep -Ei 'depth.*unit|unit.*depth'
+ros2 param get /实际相机节点名 depth_module.depth_units
+```
+
+如果最后一条参数名不存在，以 `ros2 param list` 找到的真实名称为准。把
+`DEPTH_TOPIC`、`DEPTH_INFO_TOPIC`、`encoding`、分辨率和 `depth_units` 一起记录；
+后续转换成米时都需要这些信息。
+
+若确实有 aligned depth 图但没有同名 CameraInfo，不要在 Router 中虚构一个
+不存在的 CameraInfo 话题。先核对 aligned depth 的尺寸是否与 color 图一致，
+并确认发布端说明其已经对齐到彩色相机；满足后可转发并使用现有的
+`/camera/color/camera_info`。否则必须使用原始 depth CameraInfo 和相机外参在
+消费端完成重投影。
+
+### 8.3 把确认过的话题加入 DDS Router
+
+DDS Router 使用的是 DDS 名称：ROS 话题去掉开头 `/`，再加 `rt/`。例如：
+
+```text
+/camera/aligned_depth_to_color/image_raw
+→ rt/camera/aligned_depth_to_color/image_raw
+```
+
+当前 `ddsrouter/go2-wifi-bridge.yaml` 已经包含这些条目。若未来话题名发生
+变化，以 aligned depth 为例，应在 `builtin-topics` 中加入：
+
+```yaml
+  - name: rt/camera/aligned_depth_to_color/image_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/aligned_depth_to_color/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+```
+
+同时在 `allowlist` 中加入完全相同的 DDS 名称：
+
+```yaml
+  - name: rt/camera/aligned_depth_to_color/image_raw
+  - name: rt/camera/aligned_depth_to_color/camera_info
+```
+
+如果实际发现的是 `/camera/depth/image_rect_raw`，则应写成：
+
+```yaml
+builtin-topics:
+  - name: rt/camera/depth/image_rect_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/depth/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+
+allowlist:
+  - name: rt/camera/depth/image_rect_raw
+  - name: rt/camera/depth/camera_info
+```
+
+以上片段应合并进现有的两个列表，不能在同一 YAML 中创建第二个
+`builtin-topics:` 或第二个 `allowlist:`。只添加实际存在的一组深度话题；
+同时转发 raw depth、aligned depth、RGB 和点云会明显增加 Wi-Fi 带宽。
+
+相机发布端较旧时可能没有向 Router 提供完整动态类型，因而深度图和
+CameraInfo 都应同时写进 `builtin-topics`，不能只改 allowlist。
+
+### 8.4 上传配置并重启 Router
+
+本机先加载地址探测环境，再把修改后的文件上传为新文件，不覆盖旧配置：
+
+```bash
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation/unitree_ros2
+source ./init_env.sh
+
+scp ddsrouter/go2-wifi-bridge.yaml \
+  "unitree@${UNITREE_UBUNTU_IP}:~/go2-rgbd-readonly-bridge.yaml"
+```
+
+回到原来运行 DDS Router 的 Go2 终端，用 `Ctrl+C` 停止旧实例。不要用
+`pkill`，也不要在同事任务运行时替换 Router。然后启动新配置：
+
+```bash
+source ~/DDS-Router/install/setup.bash
+~/DDS-Router/install/bin/ddsrouter \
+  -c ~/go2-rgbd-readonly-bridge.yaml
+```
+
+启动日志若报告 YAML、topic name 或 type 错误，立即回到旧的
+`~/go2-readonly-bridge.yaml`，不要一边猜名称一边修改运行中的配置。
+
+### 8.5 在本机 Domain 42 验证
+
+本机另开终端：
+
+```bash
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation/unitree_ros2
+source ./init_env.sh
+
+ROS2CLI_NO_DAEMON=1 ros2 topic list --spin-time 10 -t \
+  | grep -Ei 'depth|aligned|camera_info'
+```
+
+继续使用实际的深度话题名验证发布者、帧率和元数据：
+
+```bash
+DEPTH_TOPIC=/camera/aligned_depth_to_color/image_raw
+
+ros2 topic info -v "$DEPTH_TOPIC"
+timeout 10 ros2 topic hz "$DEPTH_TOPIC"
+timeout 10 ros2 topic echo "$DEPTH_TOPIC" --once \
+  --qos-reliability best_effort | head -n 12
+```
+
+最后可用 `rqt_image_view` 选择该深度话题：
+
+```bash
+ros2 run rqt_image_view rqt_image_view
+```
+
+“能列出话题名”还不算成功。必须同时满足：存在远端 publisher、能收到帧、
+帧率合理、`height/width/encoding` 正确。如果只有名字没有数据，优先检查：
+
+- YAML 中 DDS 名称是否与 Domain 0 发现的 ROS 名称逐字符对应；
+- `builtin-topics` 的类型是否为 `Image_` / `CameraInfo_`；
+- Router 是否确实使用了新文件；
+- 订阅是否使用 Best Effort QoS；
+- Go2 WLAN 地址是否仍与 participant 的 `whitelist-interfaces` 一致。
+
+深度原始带宽约为 `width × height × 每像素字节 × fps`。例如 16 位深度还未
+计算 DDS 开销就需要每帧 `width × height × 2` 字节；Wi-Fi 不稳定时，先停止
+RViz 点云或只保留 aligned depth，不要同时打开所有高带宽流。
+
+## 9. 显示相机
 
 最直接的方式：
 
@@ -237,7 +460,7 @@ Transport Hint: raw
 Reliability Policy: Best Effort
 ```
 
-## 9. 显示点云、相机与 Go2 URDF
+## 10. 显示点云、相机与 Go2 URDF
 
 仓库内的 `go2_description` 是 Unitree 官方 Go2 URDF/DAE 模型的 ROS 2
 Humble 包装。首次使用或模型包有更新时，在本机编译一次：
@@ -260,9 +483,31 @@ ros2 launch go2_description go2_visualization.launch.py
 ```
 
 RViz 配置会显示网格、官方 Go2 模型、完整模型 TF/坐标轴和雷达点云强度；
-同一个 launch 会用 `rqt_image_view` 打开相机原始图像。当前 Humble/OGRE
+同一个 launch 会用两个 `rqt_image_view` 窗口分别打开 RGB 原始图像和
+`/camera/aligned_depth_to_color/image_raw` 对齐深度图。当前 Humble/OGRE
 组合在 RViz 的 3D 视图旁同时创建 `Image` 渲染窗口会崩溃，因此相机没有
-嵌进 RViz 主窗口。若本次不需要相机窗口，可加 `start_image_view:=false`。
+嵌进 RViz 主窗口。若只需要其中一个窗口，可分别使用：
+
+```bash
+# 仅查看 RGB，不打开 aligned depth
+ros2 launch go2_description go2_visualization.launch.py \
+  start_depth_view:=false
+
+# 仅查看 aligned depth，不打开 RGB
+ros2 launch go2_description go2_visualization.launch.py \
+  start_image_view:=false
+```
+
+话题名改变时无需修改 launch 文件，可覆盖参数：
+
+```bash
+ros2 launch go2_description go2_visualization.launch.py \
+  color_topic:=/camera/color/image_raw \
+  aligned_depth_topic:=/camera/aligned_depth_to_color/image_raw
+```
+
+两个窗口都不需要时，同时设置 `start_image_view:=false` 和
+`start_depth_view:=false`。
 `LowState`、`SportModeState` 和手柄状态是自定义消息，RViz2 内置插件不能
 直接将它们画出来，仍按前文用 `ros2 topic echo` 查看。
 
@@ -276,11 +521,16 @@ Durability: Volatile
 ```
 
 启动文件把模型 TF 重映射到 `/go2_viz/tf` 和 `/go2_viz/tf_static`，不会通过
-DDS Router 的 `/tf` 白名单反向送进 Go2。`base -> utlidar_lidar` 使用零变换，
-只为显示建立坐标关系，不是真实雷达外参；没有标定前，不能把模型、图像和
-点云当作已经精确对齐。
+DDS Router 的 `/tf` 白名单反向送进 Go2。点云固件帧 `utlidar_lidar` 以单位
+变换挂到官方 URDF 的 `radar` link，并继承官方 `base -> radar` 安装位姿：
+`xyz="0.28945 0 -0.046825"`、`rpy="0 2.8782 0"`。这会在 TF 层纠正点云的
+上下和前后方向，而不会翻转 Go2 URDF。不要使用 RViz 全局的 **Invert Z
+Axis**，该选项会连机器人模型和其他 display 一起翻转。
 
-## 10. 带宽与故障排查
+这个位姿来自 Unitree 官方 Go2 URDF，适合显示；如果后续要把 RGB-D、LiDAR
+与位姿用于定量建图，仍应使用实机标定结果复核传感器外参。
+
+## 11. 带宽与故障排查
 
 ### 有话题名称但没有数据
 
@@ -316,7 +566,7 @@ sudo ufw status
 
 不要永久关闭整机防火墙。应只为可信的 `192.168.8.0/24` 放行所需 DDS 流量，并确认 Wi-Fi 没有启用客户端隔离。
 
-## 11. 有线兜底
+## 12. 有线兜底
 
 如果不使用无线桥接，可按上游 README 用网线连接内部网络，将有线网卡设为 `192.168.123.99/24`，然后：
 
@@ -330,20 +580,23 @@ source ./init_env.sh
 
 `enp3s0` 应替换为 `ip -br link` 显示的实际有线网卡。脚本会因有线网卡 MAC 与 WLAN 记录不同而警告，但不会阻止初始化。
 
-## 12. 最短日常清单
+## 13. 最短日常清单
 
 Go2 Ubuntu：
+
+完成第 8 节的深度话题确认和配置后使用 RGB-D 版本；尚未完成时继续使用
+`~/go2-readonly-bridge.yaml`。
 
 ```bash
 source ~/DDS-Router/install/setup.bash
 ~/DDS-Router/install/bin/ddsrouter \
-  -c ~/go2-readonly-bridge.yaml
+  -c ~/go2-rgbd-readonly-bridge.yaml
 ```
 
 本机：
 
 ```bash
-cd /home/alan/AlanLiang/Projects/pure_projects/unitree_ros2
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation/unitree_ros2
 source ./init_env.sh
 ROS2CLI_NO_DAEMON=1 ros2 topic list --spin-time 10
 ros2 launch go2_description go2_visualization.launch.py

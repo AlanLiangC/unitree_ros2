@@ -39,7 +39,22 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument(
                 "start_image_view",
                 default_value="true",
-                description="Open the bridged Go2 camera in rqt_image_view",
+                description="Open the bridged Go2 color image in rqt_image_view",
+            ),
+            DeclareLaunchArgument(
+                "start_depth_view",
+                default_value="true",
+                description="Open the color-aligned Go2 depth image in rqt_image_view",
+            ),
+            DeclareLaunchArgument(
+                "color_topic",
+                default_value="/camera/color/image_raw",
+                description="Color image topic shown by rqt_image_view",
+            ),
+            DeclareLaunchArgument(
+                "aligned_depth_topic",
+                default_value="/camera/aligned_depth_to_color/image_raw",
+                description="Color-aligned depth image topic shown by rqt_image_view",
             ),
             Node(
                 package="go2_description",
@@ -61,9 +76,11 @@ def generate_launch_description() -> LaunchDescription:
                 + [("/joint_states", "/go2_viz/joint_states")],
                 output="screen",
             ),
-            # Unitree documents the cloud frame as utlidar_lidar, but the
-            # bridge does not provide its calibrated transform. Identity is
-            # deliberately used only for visualization.
+            # The official Go2 URDF already defines the physical lidar mount as
+            # base -> radar (xyz=0.28945 0 -0.046825, pitch=2.8782 rad).  The
+            # bridged PointCloud2 uses the firmware frame name utlidar_lidar,
+            # so attach that frame to the URDF radar link instead of publishing
+            # the old, incorrect base -> utlidar_lidar identity transform.
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
@@ -82,7 +99,7 @@ def generate_launch_description() -> LaunchDescription:
                     "--yaw",
                     "0",
                     "--frame-id",
-                    "base",
+                    "radar",
                     "--child-frame-id",
                     "utlidar_lidar",
                 ],
@@ -105,10 +122,20 @@ def generate_launch_description() -> LaunchDescription:
                 cmd=[
                     "/usr/bin/python3",
                     str(image_view),
-                    "/camera/color/image_raw",
+                    LaunchConfiguration("color_topic"),
                 ],
-                name="go2_camera_view",
+                name="go2_color_view",
                 condition=IfCondition(LaunchConfiguration("start_image_view")),
+                output="screen",
+            ),
+            ExecuteProcess(
+                cmd=[
+                    "/usr/bin/python3",
+                    str(image_view),
+                    LaunchConfiguration("aligned_depth_topic"),
+                ],
+                name="go2_aligned_depth_view",
+                condition=IfCondition(LaunchConfiguration("start_depth_view")),
                 output="screen",
             ),
         ]
