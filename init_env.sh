@@ -158,10 +158,40 @@ fi
 # packages take precedence over any old copies left in the root install tree.
 source "${_unitree_ws_setup}" || return 1
 
-export RMW_IMPLEMENTATION="rmw_cyclonedds_cpp"
+# Unitree recommends CycloneDDS, but a minimal ROS 2 Humble installation often
+# only contains Fast DDS.  DDS Router is wire-compatible with both.  Prefer
+# CycloneDDS when it is installed and keep Fast DDS as a usable fallback rather
+# than exporting an RMW identifier whose shared library does not exist.
+_unitree_cyclone_rmw="/opt/ros/${UNITREE_ROS_DISTRO}/lib/librmw_cyclonedds_cpp.so"
+_unitree_fast_rmw="/opt/ros/${UNITREE_ROS_DISTRO}/lib/librmw_fastrtps_cpp.so"
+if [[ -n "${UNITREE_RMW_IMPLEMENTATION:-}" ]]; then
+  _unitree_selected_rmw="${UNITREE_RMW_IMPLEMENTATION}"
+  _unitree_selected_rmw_library="/opt/ros/${UNITREE_ROS_DISTRO}/lib/lib${_unitree_selected_rmw}.so"
+  [[ -r "${_unitree_selected_rmw_library}" ]] || {
+    _unitree_fail "UNITREE_RMW_IMPLEMENTATION=${_unitree_selected_rmw}，但找不到 ${_unitree_selected_rmw_library}"
+    unset -f _unitree_fail _unitree_find_ip_by_mac
+    return 1
+  }
+elif [[ -r "${_unitree_cyclone_rmw}" ]]; then
+  _unitree_selected_rmw="rmw_cyclonedds_cpp"
+elif [[ -r "${_unitree_fast_rmw}" ]]; then
+  _unitree_selected_rmw="rmw_fastrtps_cpp"
+  echo "[unitree] 警告：未安装 CycloneDDS RMW，临时使用 Fast DDS。" >&2
+  echo "[unitree] 建议安装：sudo apt install ros-${UNITREE_ROS_DISTRO}-rmw-cyclonedds-cpp" >&2
+else
+  _unitree_fail "没有可用的 ROS 2 RMW；请安装 ros-${UNITREE_ROS_DISTRO}-rmw-cyclonedds-cpp"
+  unset -f _unitree_fail _unitree_find_ip_by_mac
+  return 1
+fi
+
+export RMW_IMPLEMENTATION="${_unitree_selected_rmw}"
 export ROS_DOMAIN_ID="${UNITREE_DDS_DOMAIN}"
 export ROS_LOCALHOST_ONLY="0"
-export CYCLONEDDS_URI="<CycloneDDS><Domain Id=\"any\"><General><Interfaces><NetworkInterface name=\"${UNITREE_NET_IFACE}\" priority=\"default\" multicast=\"default\" /></Interfaces></General><Discovery><Peers><Peer Address=\"${UNITREE_DDS_PEER_IP}\" /></Peers></Discovery></Domain></CycloneDDS>"
+if [[ "${RMW_IMPLEMENTATION}" == "rmw_cyclonedds_cpp" ]]; then
+  export CYCLONEDDS_URI="<CycloneDDS><Domain Id=\"any\"><General><Interfaces><NetworkInterface name=\"${UNITREE_NET_IFACE}\" priority=\"default\" multicast=\"default\" /></Interfaces></General><Discovery><Peers><Peer Address=\"${UNITREE_DDS_PEER_IP}\" /></Peers></Discovery></Domain></CycloneDDS>"
+else
+  unset CYCLONEDDS_URI
+fi
 
 # If the examples have already been built, load their package environment.
 # This repository installs the binaries at the prefix root, so connect.md uses
@@ -218,5 +248,7 @@ unset _unitree_ubuntu_reachability _unitree_go2_reachability
 unset _unitree_detected_ubuntu_ip _unitree_detected_go2_ip
 unset _unitree_subnet_prefix _unitree_host _unitree_candidate_ip
 unset _unitree_address_file _unitree_candidate_mac
+unset _unitree_cyclone_rmw _unitree_fast_rmw
+unset _unitree_selected_rmw _unitree_selected_rmw_library
 unset _unitree_script_path _unitree_setup_suffix
 unset -f _unitree_fail _unitree_find_ip_by_mac

@@ -147,7 +147,16 @@ source ./init_env.sh
 [unitree] DDS       : bridge, domain 42, peer 192.168.8.252
 ```
 
-脚本会加载 Humble、`cyclonedds_ws`、CycloneDDS 和已编译的 example overlay，并按 MAC 刷新 DHCP 地址。它只修改当前终端环境，不修改 Go2。
+脚本会加载 Humble、`cyclonedds_ws` 和已编译的 example overlay，并按 MAC 刷新 DHCP 地址。它优先使用 CycloneDDS；若系统只安装了 Humble 默认的 Fast DDS，则会打印警告并自动回退到 Fast DDS。DDS Router 模式下两者均可通信。脚本只修改当前终端环境，不修改 Go2。
+
+推荐补齐 CycloneDDS RMW：
+
+```bash
+sudo apt update
+sudo apt install -y ros-humble-rmw-cyclonedds-cpp
+```
+
+安装后新开终端并重新 `source ./init_env.sh`，输出中的 ROS 行应显示 `rmw_cyclonedds_cpp`。如需显式选择已安装的实现，可在 source 前设置 `UNITREE_RMW_IMPLEMENTATION`。
 
 ## 6. 判断桥接是否成功
 
