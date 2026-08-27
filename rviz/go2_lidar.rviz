@@ -17,7 +17,7 @@ Visualization Manager:
       Offset:
         X: 0
         Y: 0
-        Z: -0.32
+        Z: 0
       Plane: XY
       Plane Cell Count: 40
       Reference Frame: <Fixed Frame>
@@ -118,7 +118,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 15; 15; 18
-    Fixed Frame: base
+    Fixed Frame: odom
     Frame Rate: 30
   Name: root
   Tools:

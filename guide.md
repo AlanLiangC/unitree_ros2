@@ -485,7 +485,7 @@ cd "$UNITREE_ROS2_ROOT"
 source ./init_env.sh
 ```
 
-之后一个命令即可同时启动本地站立模型、显示用 TF 和 RViz：
+之后一个命令即可同时启动真实关节/机身位姿转换节点、显示用 TF 和 RViz：
 
 ```bash
 ros2 launch go2_description go2_visualization.launch.py
@@ -525,24 +525,42 @@ ros2 launch go2_description go2_visualization.launch.py \
 ```
 
 两个额外窗口默认均关闭，不影响 RViz 面板内的 RGB/depth。
-`LowState`、`SportModeState` 和手柄状态是自定义消息，RViz2 内置插件不能
-直接将它们画出来，仍按前文用 `ros2 topic echo` 查看。
+`go2_state_visualizer` 会只读订阅 `/lowstate` 和 `/sportmodestate`，将前 12 个
+电机的位置映射为 Go2 URDF 的腿部关节，并将机身位置和 IMU 四元数转换为
+`odom -> base`。它也订阅 `/lf/lowstate`、`/lf/sportmodestate` 作为固件兼容
+回退。手柄等其他 Unitree 自定义消息仍按前文使用 `ros2 topic echo` 查看。
 
 核心参数：
 
 ```text
-Fixed Frame: base
+Fixed Frame: odom
 PointCloud2 Topic: /utlidar/cloud
 Reliability: Best Effort
 Durability: Volatile
 ```
 
-启动文件把模型 TF 重映射到 `/go2_viz/tf` 和 `/go2_viz/tf_static`，不会通过
-DDS Router 的 `/tf` 白名单反向送进 Go2。点云固件帧 `utlidar_lidar` 以单位
-变换挂到官方 URDF 的 `radar` link，并继承官方 `base -> radar` 安装位姿：
-`xyz="0.28945 0 -0.046825"`、`rpy="0 2.8782 0"`。这会在 TF 层纠正点云的
-上下和前后方向，而不会翻转 Go2 URDF。不要使用 RViz 全局的 **Invert Z
-Axis**，该选项会连机器人模型和其他 display 一起翻转。
+启动文件把 `odom -> base` 和模型 TF 重映射到 `/go2_viz/tf`、
+`/go2_viz/tf_static`，不会通过 DDS Router 的 `/tf` 白名单反向送进 Go2。
+固件点云的 `utlidar_lidar` 坐标轴与 URDF 中用于模型的物理 `radar` link
+不同，因此直接发布独立的 `base -> utlidar_lidar` 标定变换。默认值由
+`go2_bag_20260827_153331`、`go2_bag_20260827_171954` 的地面平面，以及
+RGB-D/LiDAR 同步帧联合估计：
+
+```text
+xyz = 0.28945, 0, -0.046825 m
+rpy = 3.3231069, -0.1396263, -1.1170107 rad
+    = 190.4, -8.0, -64.0 deg
+```
+
+需要微调时可直接覆盖 launch 参数，例如：
+
+```bash
+ros2 launch go2_description go2_visualization.launch.py \
+  lidar_roll:=3.3231069 lidar_pitch:=-0.1396263 lidar_yaw:=-1.1170107
+```
+
+不要使用 RViz 全局的 **Invert Z Axis**，该选项会连机器人模型和其他
+display 一起翻转。
 
 这个位姿来自 Unitree 官方 Go2 URDF，适合显示；如果后续要把 RGB-D、LiDAR
 与位姿用于定量建图，仍应使用实机标定结果复核传感器外参。

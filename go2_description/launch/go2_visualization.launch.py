@@ -1,4 +1,4 @@
-"""Show bridged Go2 sensors together with a local-only Go2 URDF."""
+"""Show bridged Go2 sensors together with a read-only live Go2 URDF."""
 
 from pathlib import Path
 
@@ -68,10 +68,43 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="/camera/aligned_depth_to_color/image_raw",
                 description="Color-aligned depth image topic shown by rqt_image_view",
             ),
+            DeclareLaunchArgument(
+                "lidar_x",
+                default_value="0.28945",
+                description="Calibrated base -> utlidar_lidar X translation (metres)",
+            ),
+            DeclareLaunchArgument(
+                "lidar_y",
+                default_value="0.0",
+                description="Calibrated base -> utlidar_lidar Y translation (metres)",
+            ),
+            DeclareLaunchArgument(
+                "lidar_z",
+                default_value="-0.046825",
+                description="Calibrated base -> utlidar_lidar Z translation (metres)",
+            ),
+            DeclareLaunchArgument(
+                "lidar_roll",
+                default_value="3.3231069",
+                description="Calibrated firmware-cloud roll in the Go2 base frame",
+            ),
+            DeclareLaunchArgument(
+                "lidar_pitch",
+                default_value="-0.1396263",
+                description="Calibrated firmware-cloud pitch in the Go2 base frame",
+            ),
+            DeclareLaunchArgument(
+                "lidar_yaw",
+                default_value="-1.1170107",
+                description="Calibrated firmware-cloud yaw in the Go2 base frame",
+            ),
+            # Convert the read-only Go2 LowState/SportModeState streams into
+            # the private JointState + odom -> base TF used by this RViz view.
             Node(
                 package="go2_description",
-                executable="go2_standing_joint_state.py",
-                name="go2_standing_pose",
+                executable="go2_state_visualizer.py",
+                name="go2_state_visualizer",
+                remappings=private_tf,
                 output="screen",
             ),
             Node(
@@ -88,30 +121,30 @@ def generate_launch_description() -> LaunchDescription:
                 + [("/joint_states", "/go2_viz/joint_states")],
                 output="screen",
             ),
-            # The official Go2 URDF already defines the physical lidar mount as
-            # base -> radar (xyz=0.28945 0 -0.046825, pitch=2.8782 rad).  The
-            # bridged PointCloud2 uses the firmware frame name utlidar_lidar,
-            # so attach that frame to the URDF radar link instead of publishing
-            # the old, incorrect base -> utlidar_lidar identity transform.
+            # The firmware PointCloud2 frame is not the physical `radar` frame
+            # from the mesh URDF: its axes are Z-down and yaw-rotated.  Publish
+            # an independently calibrated base -> cloud transform.  Keeping it
+            # separate avoids applying the URDF mesh pitch to an already
+            # processed firmware point cloud.
             Node(
                 package="tf2_ros",
                 executable="static_transform_publisher",
                 name="go2_visual_lidar_tf",
                 arguments=[
                     "--x",
-                    "0",
+                    LaunchConfiguration("lidar_x"),
                     "--y",
-                    "0",
+                    LaunchConfiguration("lidar_y"),
                     "--z",
-                    "0",
+                    LaunchConfiguration("lidar_z"),
                     "--roll",
-                    "0",
+                    LaunchConfiguration("lidar_roll"),
                     "--pitch",
-                    "0",
+                    LaunchConfiguration("lidar_pitch"),
                     "--yaw",
-                    "0",
+                    LaunchConfiguration("lidar_yaw"),
                     "--frame-id",
-                    "radar",
+                    "base",
                     "--child-frame-id",
                     "utlidar_lidar",
                 ],

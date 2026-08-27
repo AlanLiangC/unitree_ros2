@@ -6,8 +6,11 @@ Humble. The upstream assets were copied from
 `daadf41ee9afce8f90fdc09a98506012691fa122` and remain under Unitree's
 BSD-3-Clause license (see `LICENSE` and `README.upstream.md`).
 
-The launch file publishes only local visualization topics under `/go2_viz`.
-It does not subscribe to or publish any Go2 command topic.
+The launch file subscribes read-only to `/lowstate` and `/sportmodestate`, then
+publishes the converted joint state and visualization TF only under `/go2_viz`.
+It never subscribes to or publishes any Go2 command topic. RViz uses `odom` as
+its fixed frame, so both leg motion and the body pose are shown live. The
+`/lf/lowstate` and `/lf/sportmodestate` topics are automatic fallbacks.
 
 After the RGB-D DDS bridge is running, launch the model, LiDAR, RGB image and
 color-aligned depth image together:
@@ -27,8 +30,11 @@ color_topic:=/camera/color/image_raw
 aligned_depth_topic:=/camera/aligned_depth_to_color/image_raw
 ```
 
-The bridged cloud frame `utlidar_lidar` is attached to the official URDF
-`radar` link. Consequently it inherits Unitree's `base -> radar` mount pose
-instead of the incorrect identity transform previously used by this wrapper.
-Do not use RViz's global **Invert Z Axis** option: it flips the robot and every
-other display as well as the cloud.
+The bridged cloud frame `utlidar_lidar` is independently calibrated against
+the Go2 base frame. It must not inherit the official URDF `radar` mesh
+rotation: the firmware cloud uses different, Z-down and yaw-rotated axes.
+Defaults fitted from the included Go2 recordings are `xyz=(0.28945, 0,
+-0.046825)` and `rpy=(3.3231069, -0.1396263, -1.1170107)` radians. They can be
+overridden with the `lidar_x`, `lidar_y`, `lidar_z`, `lidar_roll`,
+`lidar_pitch`, and `lidar_yaw` launch arguments. Do not use RViz's global
+**Invert Z Axis** option: it flips the robot and every other display too.

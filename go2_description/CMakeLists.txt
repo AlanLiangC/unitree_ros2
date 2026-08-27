@@ -46,7 +46,7 @@ install(
 )
 
 install(
-  PROGRAMS scripts/go2_standing_joint_state.py
+  PROGRAMS scripts/go2_state_visualizer.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
