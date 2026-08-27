@@ -1,0 +1,8 @@
+<library path="go2_bag_panel">
+  <class
+    name="go2_description/Go2BagPanel"
+    type="go2_description::Go2BagPanel"
+    base_class_type="rviz_common::Panel">
+    <description>Embedded Go2 RGB/depth monitor and safe rosbag2 recorder.</description>
+  </class>
+</library>

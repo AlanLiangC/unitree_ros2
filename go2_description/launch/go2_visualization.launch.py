@@ -7,8 +7,10 @@ from ament_index_python.packages import (
     get_package_share_directory,
 )
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, EmitEvent, ExecuteProcess, RegisterEventHandler
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -29,6 +31,16 @@ def generate_launch_description() -> LaunchDescription:
         ("/tf_static", "/go2_viz/tf_static"),
     ]
 
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="go2_rviz",
+        arguments=["-d", rviz_config],
+        remappings=private_tf,
+        condition=IfCondition(LaunchConfiguration("start_rviz")),
+        output="screen",
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -38,13 +50,13 @@ def generate_launch_description() -> LaunchDescription:
             ),
             DeclareLaunchArgument(
                 "start_image_view",
-                default_value="true",
-                description="Open the bridged Go2 color image in rqt_image_view",
+                default_value="false",
+                description="Open an additional standalone color rqt_image_view (the RViz panel already shows it)",
             ),
             DeclareLaunchArgument(
                 "start_depth_view",
-                default_value="true",
-                description="Open the color-aligned Go2 depth image in rqt_image_view",
+                default_value="false",
+                description="Open an additional standalone depth rqt_image_view (the RViz panel already shows it)",
             ),
             DeclareLaunchArgument(
                 "color_topic",
@@ -106,18 +118,15 @@ def generate_launch_description() -> LaunchDescription:
                 remappings=private_tf,
                 output="screen",
             ),
-            Node(
-                package="rviz2",
-                executable="rviz2",
-                name="go2_rviz",
-                arguments=["-d", rviz_config],
-                remappings=private_tf,
-                condition=IfCondition(LaunchConfiguration("start_rviz")),
-                output="screen",
+            rviz_node,
+            RegisterEventHandler(
+                OnProcessExit(
+                    target_action=rviz_node,
+                    on_exit=[EmitEvent(event=Shutdown(reason="RViz window closed"))],
+                )
             ),
-            # Humble's RViz Image display crashes this host's OGRE/X11 render
-            # window when combined with the 3-D view. Use the ROS-native image
-            # viewer so the camera is still available from the same command.
+            # Optional compatibility windows. RGB/depth are normally rendered
+            # by Go2BagPanel inside RViz, avoiding the unstable OGRE Image display.
             ExecuteProcess(
                 cmd=[
                     "/usr/bin/python3",

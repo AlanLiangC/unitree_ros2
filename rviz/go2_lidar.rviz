@@ -1,26 +1,6 @@
 Panels:
-  - Class: rviz_common/Displays
-    Help Height: 80
-    Name: Displays
-    Property Tree Widget:
-      Expanded:
-        - /Global Options1
-        - /Go2 URDF1
-        - /Go2 Sensors1
-        - /Go2 Sensors1/Go2 Lidar1
-      Splitter Ratio: 0.55
-    Tree Height: 620
-  - Class: rviz_common/Selection
-    Name: Selection
-  - Class: rviz_common/Views
-    Expanded:
-      - /Current View1
-    Name: Views
-    Splitter Ratio: 0.5
-  - Class: rviz_common/Time
-    Name: Time
-    SyncMode: 0
-    SyncSource: Go2 Lidar
+  - Class: go2_description/Go2BagPanel
+    Name: "Go2 Sensors & Rosbag"
 Visualization Manager:
   Class: ""
   Displays:
@@ -171,15 +151,9 @@ Visualization Manager:
       Yaw: 0.8
     Saved: ~
 Window Geometry:
-  Displays:
+  "Go2 Sensors & Rosbag":
     collapsed: false
   Height: 920
   Hide Left Dock: false
   Hide Right Dock: false
-  Selection:
-    collapsed: false
-  Time:
-    collapsed: false
-  Views:
-    collapsed: false
-  Width: 1450
+  Width: 1720

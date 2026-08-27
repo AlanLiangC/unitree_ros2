@@ -491,20 +491,29 @@ source ./init_env.sh
 ros2 launch go2_description go2_visualization.launch.py
 ```
 
-RViz 配置会显示网格、官方 Go2 模型、完整模型 TF/坐标轴和雷达点云强度；
-同一个 launch 会用两个 `rqt_image_view` 窗口分别打开 RGB 原始图像和
-`/camera/aligned_depth_to_color/image_raw` 对齐深度图。当前 Humble/OGRE
-组合在 RViz 的 3D 视图旁同时创建 `Image` 渲染窗口会崩溃，因此相机没有
-嵌进 RViz 主窗口。若只需要其中一个窗口，可分别使用：
+RViz 配置会在同一个主窗口显示网格、官方 Go2 模型和 TF/坐标轴；右侧固定的
+`Go2 Sensors & Rosbag` 面板按上下布局显示 RGB 和 LiDAR 俯视点云。左侧默认不再
+加载 Displays/Selection/Views/Time 面板，需要时仍可从 `Panels` 菜单添加。该面板避开了本机
+Humble/OGRE `Image` display 的崩溃问题，并提供保存目录、场景名、录制时长/数据量、
+“开始录包”和“结束录包”按钮。录包直接订阅原始 ROS topic，不经过 AL-FARM 的 5 Hz
+图片采集器，因此完整保留相机发布频率。默认输出到
+`AL_FARM/recordings/rosbags/<场景名>/`。
+
+aligned depth 不占用额外显示区域，但仍会被订阅、计数并完整写入 bag。点击“结束录包”
+会向 recorder 发送 SIGINT 并等待 `metadata.yaml` 落盘；不要在写包时
+直接断电。默认记录 RGB、两路 CameraInfo、aligned depth、LiDAR、`/sportmodestate`
+及其 `/lf/sportmodestate` 回退话题。
+
+若仍需要额外的独立 `rqt_image_view` 兼容窗口，可分别开启：
 
 ```bash
 # 仅查看 RGB，不打开 aligned depth
 ros2 launch go2_description go2_visualization.launch.py \
-  start_depth_view:=false
+  start_image_view:=true
 
 # 仅查看 aligned depth，不打开 RGB
 ros2 launch go2_description go2_visualization.launch.py \
-  start_image_view:=false
+  start_depth_view:=true
 ```
 
 话题名改变时无需修改 launch 文件，可覆盖参数：
@@ -515,8 +524,7 @@ ros2 launch go2_description go2_visualization.launch.py \
   aligned_depth_topic:=/camera/aligned_depth_to_color/image_raw
 ```
 
-两个窗口都不需要时，同时设置 `start_image_view:=false` 和
-`start_depth_view:=false`。
+两个额外窗口默认均关闭，不影响 RViz 面板内的 RGB/depth。
 `LowState`、`SportModeState` 和手柄状态是自定义消息，RViz2 内置插件不能
 直接将它们画出来，仍按前文用 `ros2 topic echo` 查看。
 
