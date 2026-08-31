@@ -1,4 +1,4 @@
-# Go2 internal DDS (eth10/domain 0) -> pocket Wi-Fi (wlan0/domain 42).
+# Go2 internal DDS (eth10/domain 0) -> current Wi-Fi (wlan0/domain 42).
 #
 # This configuration targets eProsima DDS Router v2.2.0 (YAML v4.0).
 # Visualization and read-only state topics are exposed. No Unitree command
@@ -81,4 +81,4 @@ participants:
     # Go2 has multiple active NICs. Pin Domain 42 to WLAN so Fast DDS
     # advertises a locator that the laptop can actually reach.
     whitelist-interfaces:
-      - "192.168.8.252"
+      - "192.168.1.101"

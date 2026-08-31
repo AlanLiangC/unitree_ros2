@@ -15,19 +15,21 @@
 
 | 设备 | 当前 IPv4 | MAC | 用途 |
 | --- | --- | --- | --- |
-| Go2 Ubuntu | `192.168.8.252` | `6c:1f:f7:e8:25:68` | 运行 DDS Router |
-| Unitree 本体 | `192.168.8.254` | `94:ba:06:fc:40:38` | 机器人无线接口 |
-| Liang 本机 | `192.168.8.253/24` | `c0:bf:be:47:c9:e2` | ROS 2 Humble、RViz2 |
+| Go2 Ubuntu | `192.168.1.101` | `6c:1f:f7:e8:25:68` | 运行 DDS Router |
+| Unitree 本体 | 当前 WLAN 地址未确认 | `94:ba:06:fc:40:38` | bridge 模式不直接连接该地址 |
+| Liang 本机 | `192.168.1.109/24` | `dc:56:7b:da:68:6d` | ROS 2 Humble、RViz2 |
 
-这些地址由 DHCP 分配，重启 Wi-Fi 后可能互换。`init_env.sh` 会探测 `.252`～`.254` 并按 MAC 识别角色；DDS Router 配置则必须把 `go2_wifi` 明确绑定到 Ubuntu 的当前 WLAN 地址，否则多网卡环境可能发布本机无法访问的 locator。长期使用时建议在路由器中为三个 MAC 设置地址保留。
+这些地址由 DHCP 分配，重启 Wi-Fi 后可能变化。`init_env.sh` 会探测当前 `.101` 和旧网络
+`.252`～`.254` 候选，并按 MAC 识别角色；DDS Router 配置则必须把 `go2_wifi` 明确绑定到
+Ubuntu 的当前 WLAN 地址，否则多网卡环境可能发布本机无法访问的 locator。长期使用时建议
+在路由器中为 Go2 Ubuntu 的 MAC 设置地址保留。
 
 检查网络：
 
 ```bash
-ip -br -4 address show wlp4s0
-ping -c 3 192.168.8.252
-ping -c 3 192.168.8.254
-ip neigh show dev wlp4s0
+ip -br -4 address show wlp9s0
+ping -c 3 192.168.1.101
+ip neigh show dev wlp9s0
 ```
 
 ## 2. 为什么需要 DDS Router
@@ -39,9 +41,9 @@ Go2 Ubuntu eth10（192.168.123.18）
                          │
         DDS Router：Domain 0 → Domain 42
                          │
-Go2 Ubuntu WLAN（当前 192.168.8.252）
+Go2 Ubuntu WLAN（当前 192.168.1.101）
                          │
-Liang wlp4s0（当前 192.168.8.253，Domain 42）
+Liang wlp9s0（当前 192.168.1.109，Domain 42）
 ```
 
 能 ping 通 Go2 的 WLAN 地址，只表示 IP 层连通。普通 Linux 路由不会正确转发 DDS discovery 中携带的地址，因此本机直接使用 Domain 0 时仍只能看到 `/parameter_events` 和 `/rosout`。
@@ -105,7 +107,7 @@ pgrep -af ddsrouter || true
 预期接口为：
 
 - `eth10 / 192.168.123.18`：对应 `go2_internal`；
-- `wlan0 / 192.168.8.252`：对应 `go2_wifi`。
+- `wlan0 / 192.168.1.101`：对应 `go2_wifi`。
 
 两者都必须与 YAML 的 `whitelist-interfaces` 一致。特别是无线 participant 不能留空：实测留空时 DDS Router 虽监听 `0.0.0.0:17900/17910/17911`，但 Liang 本机无法发现任何桥接话题。若 DHCP 改变 Ubuntu WLAN 地址，先更新 YAML 再启动 Router。
 
@@ -141,10 +143,9 @@ source ./init_env.sh
 预期输出类似：
 
 ```text
-[unitree] 本机网卡  : wlp4s0 (192.168.8.253)
-[unitree] Go2 Ubuntu: 192.168.8.252 (可达)
-[unitree] Unitree   : 192.168.8.254 (可达)
-[unitree] DDS       : bridge, domain 42, peer 192.168.8.252
+[unitree] 本机网卡  : wlp9s0 (192.168.1.109)
+[unitree] Go2 Ubuntu: 192.168.1.101 (可达)
+[unitree] DDS       : bridge, domain 42, peer 192.168.1.101
 ```
 
 脚本会加载 Humble、`cyclonedds_ws` 和已编译的 example overlay，并按 MAC 刷新 DHCP 地址。它优先使用 CycloneDDS；若系统只安装了 Humble 默认的 Fast DDS，则会打印警告并自动回退到 Fast DDS。DDS Router 模式下两者均可通信。脚本只修改当前终端环境，不修改 Go2。

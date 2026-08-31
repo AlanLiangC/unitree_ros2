@@ -34,12 +34,12 @@ _unitree_fail() {
 _unitree_root="$(cd -- "$(dirname -- "${_unitree_script_path}")" && pwd)" || return 1
 export UNITREE_ROS2_ROOT="${UNITREE_ROS2_ROOT:-${_unitree_root}}"
 export UNITREE_ROS_DISTRO="${UNITREE_ROS_DISTRO:-humble}"
-export UNITREE_UBUNTU_IP="${UNITREE_UBUNTU_IP:-192.168.8.252}"
+export UNITREE_UBUNTU_IP="${UNITREE_UBUNTU_IP:-192.168.1.101}"
 export UNITREE_GO2_IP="${UNITREE_GO2_IP:-192.168.8.254}"
-export UNITREE_LOCAL_IP="${UNITREE_LOCAL_IP:-192.168.8.253}"
+export UNITREE_LOCAL_IP="${UNITREE_LOCAL_IP:-192.168.1.109}"
 export UNITREE_UBUNTU_MAC="${UNITREE_UBUNTU_MAC:-6c:1f:f7:e8:25:68}"
 export UNITREE_GO2_MAC="${UNITREE_GO2_MAC:-94:ba:06:fc:40:38}"
-export UNITREE_LOCAL_MAC="${UNITREE_LOCAL_MAC:-c0:bf:be:47:c9:e2}"
+export UNITREE_LOCAL_MAC="${UNITREE_LOCAL_MAC:-dc:56:7b:da:68:6d}"
 export UNITREE_DDS_MODE="${UNITREE_DDS_MODE:-bridge}"
 if [[ -n "${UNITREE_DDS_DOMAIN_OVERRIDE:-}" ]]; then
   UNITREE_DDS_DOMAIN="${UNITREE_DDS_DOMAIN_OVERRIDE}"
@@ -110,7 +110,7 @@ fi
 # the two remote roles back to their stable MAC addresses.
 _unitree_subnet_prefix="${_unitree_actual_ip%.*}"
 if [[ -n "${_unitree_subnet_prefix}" && "${_unitree_subnet_prefix}" != "${_unitree_actual_ip}" ]]; then
-  for _unitree_host in 252 253 254; do
+  for _unitree_host in 101 252 253 254; do
     _unitree_candidate_ip="${_unitree_subnet_prefix}.${_unitree_host}"
     if [[ "${_unitree_candidate_ip}" != "${_unitree_actual_ip}" ]]; then
       ping -I "${UNITREE_NET_IFACE}" -c 1 -W 1 "${_unitree_candidate_ip}" >/dev/null 2>&1 || true

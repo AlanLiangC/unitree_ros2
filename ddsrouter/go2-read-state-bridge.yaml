@@ -1,7 +1,7 @@
 # Read-only Go2 DDS bridge for the README connection tests.
 #
 # Go2 internal DDS: 192.168.123.18 / domain 0
-# Go2 Ubuntu Wi-Fi: 192.168.8.252 / domain 42
+# Go2 Ubuntu Wi-Fi: 192.168.1.101 / domain 42
 #
 # The Wi-Fi participant is pinned to its current address because this Go2 has
 # multiple NICs. Update it if DHCP changes the Ubuntu WLAN address. No command
@@ -43,4 +43,4 @@ participants:
     domain: 42
     transport: udp
     whitelist-interfaces:
-      - "192.168.8.252"
+      - "192.168.1.101"
