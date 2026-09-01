@@ -1,0 +1,86 @@
+# OPT-IN CONTROL bridge for AL-FARM keyboard testing.
+#
+# This is intentionally separate from go2-wifi-bridge.yaml. It exposes only
+# Unitree's high-level Sport request/response in addition to the existing
+# sensor/state topics; lowcmd and the motion-switcher API remain blocked.
+# Stop this router and restore the read-only bridge immediately after testing.
+
+version: v4.0
+
+builtin-topics:
+  - name: rt/camera/color/image_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/color/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+  - name: rt/camera/color/metadata
+    type: realsense2_camera_msgs::msg::dds_::Metadata_
+  - name: rt/camera/depth/image_rect_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/depth/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+  - name: rt/camera/depth/metadata
+    type: realsense2_camera_msgs::msg::dds_::Metadata_
+  - name: rt/camera/aligned_depth_to_color/image_raw
+    type: sensor_msgs::msg::dds_::Image_
+  - name: rt/camera/aligned_depth_to_color/camera_info
+    type: sensor_msgs::msg::dds_::CameraInfo_
+  - name: rt/camera/extrinsics/depth_to_color
+    type: realsense2_camera_msgs::msg::dds_::Extrinsics_
+  - name: rt/camera/imu
+    type: sensor_msgs::msg::dds_::Imu_
+  - name: rt/sportmodestate
+    type: unitree_go::msg::dds_::SportModeState_
+  - name: rt/lf/sportmodestate
+    type: unitree_go::msg::dds_::SportModeState_
+  - name: rt/lowstate
+    type: unitree_go::msg::dds_::LowState_
+  - name: rt/lf/lowstate
+    type: unitree_go::msg::dds_::LowState_
+  - name: rt/wirelesscontroller
+    type: unitree_go::msg::dds_::WirelessController_
+  - name: rt/api/sport/request
+    type: unitree_api::msg::dds_::Request_
+  - name: rt/api/sport/response
+    type: unitree_api::msg::dds_::Response_
+
+specs:
+  qos:
+    history-depth: 10
+
+allowlist:
+  - name: rt/camera/color/image_raw
+  - name: rt/camera/color/camera_info
+  - name: rt/camera/color/metadata
+  - name: rt/camera/depth/image_rect_raw
+  - name: rt/camera/depth/camera_info
+  - name: rt/camera/depth/metadata
+  - name: rt/camera/aligned_depth_to_color/image_raw
+  - name: rt/camera/aligned_depth_to_color/camera_info
+  - name: rt/camera/extrinsics/depth_to_color
+  - name: rt/camera/imu
+  - name: rt/utlidar/cloud
+  - name: rt/tf
+  - name: rt/tf_static
+  - name: rt/sportmodestate
+  - name: rt/lf/sportmodestate
+  - name: rt/lowstate
+  - name: rt/lf/lowstate
+  - name: rt/wirelesscontroller
+  - name: rt/api/sport/request
+  - name: rt/api/sport/response
+
+participants:
+  - name: go2_internal
+    kind: local
+    domain: 0
+    transport: udp
+    whitelist-interfaces:
+      - "192.168.123.18"
+
+  - name: go2_wifi
+    kind: local
+    domain: 42
+    transport: udp
+    # Update this address if Go2 Ubuntu's WLAN DHCP address changes.
+    whitelist-interfaces:
+      - "192.168.1.101"

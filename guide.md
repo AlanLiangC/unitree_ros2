@@ -11,6 +11,9 @@
 
 > 本指南只桥接和读取传感器、TF 与状态话题。不要用 `low_level_ctrl`、`go2_sport_client`、`go2_stand_example` 做连通性测试，它们可能让机器人运动。
 
+AL-FARM 另提供一个必须显式启用、只发送高层 `Move/StopMove` 的安全键盘，见第 8.6 节。默认
+`go2-wifi-bridge.yaml` 仍是只读配置；不要用 Unitree 自带的固定动作示例替代键盘做测试。
+
 ## 1. 当前网络与角色
 
 | 设备 | 当前 IPv4 | MAC | 用途 |
@@ -453,6 +456,110 @@ ros2 run rqt_image_view rqt_image_view
 深度原始带宽约为 `width × height × 每像素字节 × fps`。例如 16 位深度还未
 计算 DDS 开销就需要每帧 `width × height × 2` 字节；Wi-Fi 不稳定时，先停止
 RViz 点云或只保留 aligned depth，不要同时打开所有高带宽流。
+
+### 8.6 临时启用 Go2 高层控制桥接
+
+仅在实际运动测试期间使用
+`ddsrouter/go2-wifi-control-bridge.yaml`。它在原 RGB-D/状态白名单之外只增加：
+
+```text
+/api/sport/request     unitree_api/msg/Request
+/api/sport/response    unitree_api/msg/Response
+```
+
+`/lowcmd` 和 `/api/motion_switcher/request` 仍不转发。由于 DDS Router 只能按话题过滤、不能按
+Sport API ID 过滤，启用这个配置期间，Domain 42 上其他进程理论上也能向 Sport request 话题
+发布；因此只应连接可信网络，结束后立即恢复只读 Router。
+
+首次使用先在本机编译新增 keyboard：
+
+```bash
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation
+bash custom/scripts/build.sh
+```
+
+确认 Go2 Ubuntu 的 WLAN 地址仍与 YAML 中 `192.168.1.101` 一致；若 DHCP 已变化，先修改本机
+YAML 的 `go2_wifi.whitelist-interfaces`。然后上传为一个新文件，不覆盖只读配置：
+
+```bash
+cd unitree_ros2
+source ./init_env.sh
+scp ddsrouter/go2-wifi-control-bridge.yaml \
+  "unitree@${UNITREE_UBUNTU_IP}:~/go2-alfarm-control-bridge.yaml"
+```
+
+回到 Go2 上原来运行 Router 的前台终端，用 `Ctrl+C` 停止只读实例；确认没有同事任务后启动
+临时控制实例：
+
+```bash
+source ~/DDS-Router/install/setup.bash
+~/DDS-Router/install/bin/ddsrouter \
+  -c ~/go2-alfarm-control-bridge.yaml
+```
+
+实机上电前先做不发布消息的 dry-run：
+
+```bash
+cd /home/alan/AlanLiang/Projects/AlanLiang/FARM-Navigation/AL_FARM
+./scripts/go2_keyboard_control.sh
+```
+
+实机测试前让 Go2 位于平整防滑地面，周围至少保留 2 米净空，机器人始终在视线内，并由一人
+握持原厂遥控器准备停止。Go2 应先用原厂方式进入正常站立/运动服务；keyboard 不会替你执行
+`StandUp` 或 `RecoveryStand`。不要同时操作 App 虚拟摇杆或运行其他控制程序。
+
+可单独运行键盘，也可以与实时 RViz 一起运行：
+
+```bash
+# 已有 RViz/构图终端时，在第二个终端运行
+./scripts/go2_keyboard_control.sh --enable-motion
+
+# 或由同一个脚本后台启动 RViz，前台占用当前终端接收按键
+./scripts/start_realtime_rviz.sh --keyboard
+```
+
+程序必须先发现新 Router 提供的 `/api/sport/request` 订阅端和新鲜 SportModeState，随后要求
+输入 `GO2`。确认后先发送无运动风险的 `StopMove`，然后进入 `LOCKED`；按 `Space` 才解锁。
+部分固件会返回 `/api/sport/response`，程序会显示其状态码；Unitree 官方 ROS 2 SportClient
+也支持只发布请求、不等待 response，因此默认 `require_response=false`，无回包只警告而不拒绝。
+若已确认所用固件稳定回包，可在 `config/default.json` 设为 `true` 以恢复严格握手。键位如下：
+
+当前 Go2 实测 response publisher 使用 Best Effort QoS；keyboard 的 response subscriber 也使用
+Best Effort（它同时兼容 Reliable writer）。不要改回 Reliable-only，否则 ROS 会报告
+`incompatible QoS: RELIABILITY` 并丢弃所有 response。
+
+```text
+W/S: 前进/后退    A/D: 左移/右移    Q/E: 左转/右转
+X/K: StopMove 并锁定    Space: 解锁/锁定    Esc/Ctrl+C: StopMove 并退出
+```
+
+默认速度和源码硬上限均采用 Unitree 官方 Go2 示例量级：前后/横移 `0.30 m/s`、转向
+`0.50 rad/s`。终端没有可靠的“松键”事件，本机键盘首次自动重复延迟实测为 500 ms，
+因此第一次运动字符使用最长 `0.75 s` 的起步窗口；检测到按住产生连续字符后，切换为
+`0.15 s` 松键 watchdog。这样不会在 Go2 准备迈步时被 300 ms 的旧超时提前打断。状态流超过
+`0.75 s` 未更新也会停止并锁定；退出、关闭终端或按 `Ctrl+C/Ctrl+Z/Ctrl+\` 时连续发送三次
+`StopMove`。keyboard 在按键有效期内以 20 Hz 刷新 `Move`；Unitree 官方 Go2 ROS 2 示例的
+`Move(0.3, 0, 0.3)` 即使只发布一次也会被 Sport 服务执行，因此不应靠过度提高发送
+频率排查步态问题。固件保护不能替代现场人员和原厂遥控器。
+
+键盘状态行会同步显示 SportModeState 的 `mode/gait/vx/vy/wz/error`。按官方消息定义，正常接收
+速度动作后通常应从 `mode=0, gait=0` 进入 `mode=3` locomotion 与非零 gait；不同 EDU 固件的
+`error_code`（本机曾观测到 `100`）没有公开完整枚举，只作为原始诊断值显示，不据此自动执行
+恢复动作。若 Move 连续发送 1 秒仍保持 idle，先松键，再用原厂遥控器按 START 解锁/恢复默认
+步态；不要让 keyboard 自动调用 `SwitchJoystick(false)`，否则会失去现场遥控接管通道。
+
+当前 SDK2 的 `ClientBase` 为每条请求写入唯一 `time.monotonic_ns()` identity，`Move` 使用
+`noreply=true`；实机 `/api/sport/request` 端点是 Best Effort / KeepLast(1)。keyboard 与这套
+协议完全对齐。不要把 identity 固定为 0，也不要把流式速度 publisher 改成 Reliable 深队列：
+前者可能让固件把后续方向当成重复请求，后者可能在无线抖动后回放已经过时的速度方向，表现为
+动作迟缓、横移/转向不起效或步态像被两路指令拉扯。
+
+不要为解决 idle 状态而发送旧 `SwitchGait(1011)` 或 `ContinuousGait(1019)`：当前 Unitree
+ROS 2 changelog 已把两者列为不再支持的 breaking-change API。keyboard 只依赖当前仍受支持的
+`Move(1008)` 与 `StopMove(1003)`。
+
+完成测试后先按 `X`，再按 `Esc`。随后在 Go2 Router 终端用 `Ctrl+C` 停止控制实例，并恢复
+第 8.4 节的只读 `~/go2-rgbd-readonly-bridge.yaml`。不要让控制 bridge 常驻后台。
 
 ## 9. 显示相机
 
