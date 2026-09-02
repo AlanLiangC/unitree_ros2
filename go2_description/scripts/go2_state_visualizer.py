@@ -124,10 +124,11 @@ class Go2StateVisualizer(Node):
         self.position = position
         # Unitree IMUState.quaternion is ordered [w, x, y, z].
         self.quaternion_wxyz = normalized_wxyz(message.imu_state.quaternion)
-        pose_stamp = message.stamp
-        if pose_stamp.sec == 0 and pose_stamp.nanosec == 0:
-            pose_stamp = self.get_clock().now().to_msg()
-        self.publish_transform(pose_stamp)
+        # Unitree firmware and the PC can use different clock epochs.  A robot
+        # timestamp on a PC-side TF is then rejected by RViz as TF_OLD_DATA even
+        # though the state packet has just arrived.  This bridge visualizes the
+        # latest received state, so stamp it in the local ROS clock domain.
+        self.publish_transform(self.get_clock().now().to_msg())
         if not self.received_pose:
             self.received_pose = True
             self.get_logger().info("receiving real Go2 body pose from /sportmodestate")
@@ -142,6 +143,10 @@ class Go2StateVisualizer(Node):
         joints.velocity = self.joint_velocity
         joints.effort = self.joint_effort
         self.joint_publisher.publish(joints)
+        # Refresh the body transform with the same local-clock stamp as the
+        # joints.  This keeps RobotModel visible between state packets and also
+        # shows the neutral fallback pose while waiting for the first packet.
+        self.publish_transform(stamp)
 
     def publish_transform(self, stamp) -> None:
         transform = TransformStamped()
@@ -169,6 +174,12 @@ def main(args=None) -> None:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except Exception:
+        # ROS launch may invalidate the shared context before spin() returns.
+        # Treat that shutdown race as a clean exit, but preserve real runtime
+        # failures while the context is still healthy.
+        if rclpy.ok():
+            raise
     finally:
         node.destroy_node()
         if rclpy.ok():
